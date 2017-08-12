@@ -65,7 +65,6 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order)
 
 int main() {
   static const double LATENCY = 0.1;
-  static vector<double> next_state = {0.0, 0.0};
 
   uWS::Hub h;
   MPC mpc;
@@ -89,6 +88,8 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          double steering = j[1]["steering_angle"];
+          double throttle = j[1]["throttle"];
           v *= MPC::TO_METERS_PER_SECOND;
 
           // Affine transformation
@@ -120,7 +121,7 @@ int main() {
           // derivative of coeffs[0] + coeffs[1] * x becomes coeffs[1]
           // Originally, double epsi = psi - atan(coeffs[1]);
           // Hoever, the orientation error is
-          // -atan(coeffs[1] + coeffs[2]*x + coeffs[3]* x^2) at x = 0 in vehicle's coordinates
+          // -atan(coeffs[1] + coeffs[2]*px + coeffs[3]* px^2) at x = 0 in vehicle's coordinates
           double epsi = -atan(coeffs[1]);
 
           // Incorporate the latency into the model
@@ -129,14 +130,14 @@ int main() {
           // The current x,y and psi are 0 from the point of view of the vehicle
           Eigen::VectorXd state(6);
           state <<
-                  v * cos(next_state[0]) * LATENCY,
-                  v * sin(next_state[0]) * LATENCY,
-                  v * next_state[0] / MPC::LF * LATENCY,
-                  v + next_state[1] * LATENCY,
+                  v * cos(psi) * LATENCY,
+                  v * sin(psi) * LATENCY,
+                  v * (-steering / MPC::LF) * LATENCY,
+                  v + throttle * LATENCY,
                   cte,
                   epsi;
 
-          next_state = mpc.Solve(state, coeffs);
+          vector<double> next_state = mpc.Solve(state, coeffs);
 
           double steer_value = -next_state[0]/deg2rad(25);
           double throttle_value = next_state[1];
