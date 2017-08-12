@@ -9,7 +9,6 @@
 #include "MPC.h"
 #include "json.hpp"
 
-// for convenience
 using json = nlohmann::json;
 
 // For converting back and forth between radians and degrees.
@@ -44,8 +43,7 @@ double polyeval(Eigen::VectorXd coeffs, double x) {
 // Fit a polynomial.
 // Adapted from
 // https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
-Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
-                        int order) {
+Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order) {
   assert(xvals.size() == yvals.size());
   assert(order >= 1 && order <= xvals.size() - 1);
   Eigen::MatrixXd A(xvals.size(), order + 1);
@@ -66,13 +64,12 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
 }
 
 int main() {
-  uWS::Hub h;
+  static const double LATENCY = 0.1;
 
-  // MPC is initialized here!
+  uWS::Hub h;
   MPC mpc;
 
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                     uWS::OpCode opCode) {
+  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -91,15 +88,59 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          double steering = j[1]["steering_angle"];
+          double throttle = j[1]["throttle"];
+          v *= MPC::TO_METERS_PER_SECOND;
 
-          /*
-          * TODO: Calculate steering angle and throttle using MPC.
-          *
-          * Both are in between [-1, 1].
-          *
-          */
-          double steer_value;
-          double throttle_value;
+          // Affine transformation
+          // Convert to the coordinate system from the point of view of the vehicle
+          int position_size = ptsx.size();
+          for (int i = 0; i < position_size; i++) {
+            double x = ptsx[i] - px;
+            double y = ptsy[i] - py;
+            ptsx[i] = x * cos(psi) + y * sin(psi);
+            ptsy[i] = -x * sin(psi) + y * cos(psi);
+          }
+
+          // Calculate the coefficients of the polinomial
+          Eigen::VectorXd xvals(position_size);
+          Eigen::VectorXd yvals(position_size);
+          for (int i = 0; i < position_size; i++) {
+            xvals(i) = ptsx[i];
+            yvals(i) = ptsy[i];
+          }
+          Eigen::VectorXd coeffs = polyfit(xvals, yvals, 3);
+
+          // Calculate the cte by evaluating at polynomial at x, f(x) and subtracting y.
+          // Originally, double cte = polyeval(coeffs, px) - py;
+          // However, the cte is the intercept at x = 0 in the vehicle's coordinates
+          double cte = polyeval(coeffs, 0);
+
+          // Calculate the orientation error
+          // Since the sign starts at 0, the orientation error is -f'(x).
+          // derivative of coeffs[0] + coeffs[1] * x becomes coeffs[1]
+          // Originally, double epsi = psi - atan(coeffs[1]);
+          // Hoever, the orientation error is
+          // -atan(coeffs[1] + coeffs[2]*px + coeffs[3]* px^2) at x = 0 in vehicle's coordinates
+          double epsi = -atan(coeffs[1]);
+
+          // Incorporate the latency into the model
+          // Calcuate the state in the latency time from
+          // the state (x_current,y_current,psi_current,v_current) = (0,0,0,v_current)
+          // The current x,y and psi are 0 from the point of view of the vehicle
+          Eigen::VectorXd state(6);
+          state <<
+                  v * cos(psi) * LATENCY,
+                  v * sin(psi) * LATENCY,
+                  v * (-steering / MPC::LF) * LATENCY,
+                  v + throttle * LATENCY,
+                  cte,
+                  epsi;
+
+          vector<double> next_state = mpc.Solve(state, coeffs);
+
+          double steer_value = -next_state[0]/deg2rad(25);
+          double throttle_value = next_state[1];
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
@@ -107,9 +148,9 @@ int main() {
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
-          //Display the MPC predicted trajectory 
-          vector<double> mpc_x_vals;
-          vector<double> mpc_y_vals;
+          // Display the MPC predicted trajectory
+          vector<double> mpc_x_vals = mpc.GetPredictedX();
+          vector<double> mpc_y_vals = mpc.GetPredictedY();
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
@@ -117,16 +158,15 @@ int main() {
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
 
-          //Display the waypoints/reference line
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
+          // Display the waypoints/reference line
+          vector<double> next_x_vals = ptsx;
+          vector<double> next_y_vals = ptsy;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
-
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
@@ -153,8 +193,7 @@ int main() {
   // We don't need this since we're not using HTTP but if it's removed the
   // program
   // doesn't compile :-(
-  h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data,
-                     size_t, size_t) {
+  h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) {
     const std::string s = "<h1>Hello world!</h1>";
     if (req.getUrl().valueLength == 1) {
       res->end(s.data(), s.length());
@@ -168,8 +207,7 @@ int main() {
     std::cout << "Connected!!!" << std::endl;
   });
 
-  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
-                         char *message, size_t length) {
+  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
     ws.close();
     std::cout << "Disconnected" << std::endl;
   });
