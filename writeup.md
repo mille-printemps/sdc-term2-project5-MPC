@@ -60,3 +60,6 @@ Namely, since the current state of the vehicle `[x_t, y_t, psi_t, v_t]` became `
           vector<double> next_state = mpc.Solve(state, coeffs);
 ```
 
+# Demo video
+
+For a case where the code does not work properly on reviewer's machine, [a demo video](./mpcdemo.mp4) is added to the repository. The demo was ran on Mac OS X Version `10.11.6`, the processor was `2.6 GHz Intel Core i5`, and the simulator version was `v1.45` downloaded from [here](https://github.com/udacity/self-driving-car-sim/releases/download/v1.45/term2_sim_mac.zip)
