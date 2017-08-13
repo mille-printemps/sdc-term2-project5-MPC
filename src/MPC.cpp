@@ -44,7 +44,7 @@ class FG_eval {
     // To minimize the cross-track error, heading error, velocity error
 
     const double CTE_WEIGHT = 1.0;
-    const double EPSI_WEIGHT = 1.0;
+    const double EPSI_WEIGHT = 100;
     const double VELOCITY_WEIGHT = 1.0;
 
     for (int t = 0; t < N; t++) {
@@ -56,7 +56,7 @@ class FG_eval {
     // To minimize the use of actuators for smooth turns
     // not to make the vehicle velocity change too radically
 
-    const double STEERING_WEIGHT = 50;
+    const double STEERING_WEIGHT = 500;
     const double THROTTLE_WEIGHT = 1.0;
 
     for (int t = 0; t < N - 1; t++) {
