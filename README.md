@@ -1,4 +1,10 @@
 # CarND-Controls-MPC
+
+A write-up of this project can be found [here](./writeup.md)
+
+---
+## *The following is the original Udacity README*
+
 Self-Driving Car Engineer Nanodegree Program
 
 ---
